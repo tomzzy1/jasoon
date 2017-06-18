@@ -18,12 +18,12 @@ namespace jasoon
 
 	enum class Token
 	{
-		Object_begin,
-		Object_end,
-		Array_begin,
-		Array_end,
-		Name_separator,
-		Value_separator,
+		Object_begin,	 //{
+		Object_end,		 //}
+		Array_begin,     //[
+		Array_end,       //]
+		Name_separator,  //:
+		Value_separator, //,
 		String,
 		Interger,
 		Float,
@@ -75,15 +75,15 @@ namespace jasoon
 			std::equal_to<String_type>,
 			Allocator_type<std::pair<const String_type, Basic_json>>>;
 
-		using object_ptr = std::unique_ptr<object_t>;
+		using object_ptr = std::unique_ptr<object_t>; //used in varaint
 
 		using array_t = Array_type<Basic_json, Allocator_type<Basic_json>>;
 
-		using array_ptr = std::unique_ptr<array_t>;
+		using array_ptr = std::unique_ptr<array_t>; //used in varaint
 
 		using string_t = String_type;
 
-		using string_ptr = std::unique_ptr<string_t>;
+		using string_ptr = std::unique_ptr<string_t>; //used in varaint
 
 		using interger_t = Interger_type;
 
@@ -136,7 +136,7 @@ namespace jasoon
 		}
 
 		template<typename T>
-		operator T() const
+		operator T() const //implicit cast operation
 		{
 			if constexpr(std::is_same_v<T, object_t>)
 				return *std::get<object_ptr>(value);
@@ -149,19 +149,29 @@ namespace jasoon
 		}
 
 	public:
-		void push_back(const_reference node) const
+		void push_back(const_reference element) const
 		{
-			if (is_object())
-				std::get<object_ptr>(value)->emplace(*std::get<string_ptr>(node[0].value), node[1]);
+			if (is_object() 
+				&& element.is_array() 
+				&& element.size() == 2
+				&& element[0].is_string())
+				std::get<object_ptr>(value)
+				->emplace(
+					*std::get<string_ptr>(element[0].value), element[1]);
 			else
-				std::get<array_ptr>(value)->push_back(node);
+				std::get<array_ptr>(value)->push_back(element);
 		}
-		void push_back(value_type&& node)
+		void push_back(value_type&& element)
 		{
-			if (is_object())
-				std::get<object_ptr>(value)->emplace(std::move(*std::get<string_ptr>(node[0].value)), std::move(node[1]));
+			if (is_object()
+				&& element.is_array()
+				&& element.size() == 2
+				&& element[0].is_string())
+				std::get<object_ptr>(value)
+				->emplace(
+					std::move(*std::get<string_ptr>(element[0].value)), std::move(element[1]));
 			else
-				std::get<array_ptr>(value)->push_back(std::move(node));
+				std::get<array_ptr>(value)->push_back(std::move(element));
 		}
 		size_type size() const
 		{
@@ -177,7 +187,7 @@ namespace jasoon
 
 			Token getToken()
 			{
-				while (std::isspace(last_char))
+				while (std::isspace(last_char)) //skip space
 					last_char = stream->get();
 				switch (last_char)
 				{
@@ -225,10 +235,10 @@ namespace jasoon
 				case'8':
 				case'9':
 					return scanNumber();
-				case't':
-				case'f':
+				case't': //true
+				case'f': //false
 					return scanBoolean();
-				case'n':
+				case'n': //null
 					return scanNull();
 				default:
 					break;
@@ -245,7 +255,7 @@ namespace jasoon
 			{
 				if (mode == InputMode::String)
 					stream = std::make_unique<std::istringstream>(s);
-				else
+				else //mode == InputMode::File
 					stream = std::make_unique<std::ifstream>(s);
 			}
 
@@ -381,7 +391,7 @@ namespace jasoon
 		private:
 			Basic_json parseObject()
 			{
-				Basic_json object(Json_type::Object);
+				Basic_json object(Json_type::Object); //empty json object
 				auto token = lexer.getToken();
 				string_t name;
 				bool is_name = true;
@@ -434,7 +444,7 @@ namespace jasoon
 			}
 			Basic_json parseArray()
 			{
-				Basic_json array(Json_type::Array);
+				Basic_json array(Json_type::Array); //empty json array
 				auto token = lexer.getToken();
 				while (token != Token::Array_end)
 				{
@@ -489,7 +499,7 @@ namespace jasoon
 				if (is_array())
 					return std::get<array_ptr>(value)->operator[](index);
 			}
-			else if constexpr(std::is_convertible_v<T, string_t>)
+			else if constexpr(std::is_convertible_v<T, string_t>) //T can be char* , std::string ...
 			{
 				if (is_object())
 					return std::get<object_ptr>(value)->operator[](index);
@@ -540,7 +550,8 @@ namespace jasoon
 				type = Json_type::Object;
 				value = std::make_unique<object_t>();
 				for (const auto& element : list)
-					std::get<object_ptr>(value)->emplace(*std::get<string_ptr>(element[0].value), element[1]);
+					std::get<object_ptr>(value)
+					->emplace(*std::get<string_ptr>(element[0].value), element[1]);
 			}
 			else
 			{
@@ -661,7 +672,7 @@ namespace jasoon
 		~Basic_json() = default;
 
 	public:
-		static value_type parse(const string_t& s,InputMode mode = InputMode::String)
+		static value_type parse(const string_t& s, InputMode mode = InputMode::String)
 		{
 			return parser.parse(s, mode);
 		}
