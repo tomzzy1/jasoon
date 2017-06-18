@@ -179,7 +179,6 @@ namespace jasoon
 			{
 				while (std::isspace(last_char))
 					last_char = stream->get();
-				//std::cout << static_cast<char>(last_char);
 				switch (last_char)
 				{
 				case'{':
