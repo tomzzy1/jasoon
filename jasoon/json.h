@@ -151,8 +151,8 @@ namespace jasoon
 	public:
 		void push_back(const_reference element) const
 		{
-			if (is_object() 
-				&& element.is_array() 
+			if (is_object()
+				&& element.is_array()
 				&& element.size() == 2
 				&& element[0].is_string())
 				std::get<object_ptr>(value)
@@ -355,8 +355,8 @@ namespace jasoon
 
 			Token scanNull()
 			{
-				using namespace std::string_view_literals;
-				static constexpr auto null_literal = "null"sv;
+				using namespace std::string_view_literals; us
+					static constexpr auto null_literal = "null"sv;
 				for (const auto& c : null_literal)
 				{
 					if (last_char == c)
@@ -672,6 +672,103 @@ namespace jasoon
 		~Basic_json() = default;
 
 	public:
+		string_t stringify()
+		{
+			string_t s;
+			if (type == Json_type::Object)
+				stringifyObject(s);
+			else if (type == Json_type::Array)
+				stringifyArray(s);
+			return s;
+		}
+	private:
+		void stringifyObject(string_t& s)
+		{
+			s += "{\t";
+			for (const auto& element : *std::get<object_ptr>(value))
+			{
+				s += '"';
+				s += element.first;
+				s += "\":";
+				switch (element.second.type)
+				{
+				case Json_type::Object:
+					element.second.stringifyObject(s);
+					break;
+				case Json_type::Array:
+					element.second.stringifyArray(s);
+					break;
+				case Json_type::String:
+					s += *std::get<string_ptr>(element.second.value);
+					break;
+				case Json_type::Interger:
+					s += std::to_string(
+						std::get<interger_t>(element.second.value));
+					break;
+				case Json_type::Float:
+					s += std::to_string(
+						std::get<float_t>(element.second.value));
+					break;
+				case Json_type::Boolean:
+				{
+					if (std::get<boolean_t>(element.second.value) == true)
+						s += "true";
+					else
+						s += "false";
+					break;
+				}
+				case Json_type::Null:
+					s += "null";
+					break;
+				default:
+					break;
+				}
+				s += ",\n\t";
+			}
+			s += '}';
+		}
+		void stringifyArray(string_t& s)
+		{
+			s += "[\t";
+			for (const auto& element : *std::get<array_ptr>(value))
+			{
+				switch (element.type)
+				{
+				case Json_type::Object:
+					element.stringifyObject(s);
+					break;
+				case Json_type::Array:
+					element.stringifyArray(s);
+					break;
+				case Json_type::String:
+					s += *std::get<string_ptr>(element.value);
+					break;
+				case Json_type::Interger:
+					s += std::to_string(std::get<interger_t>(element.value));
+					break;
+				case Json_type::Float:
+					s += std::to_string(std::get<float_t>(element.value));
+					break;
+				case Json_type::Boolean:
+				{
+					if (std::get<boolean_t>(element.value) == true)
+						s += "true";
+					else
+						s += "false";
+					break;
+				}
+				case Json_type::Null:
+					s += "null";
+					break;
+				default:
+					break;
+				}
+				s += ",\n\t";
+			}
+			s += ']';
+		}
+	public:
+
 		static value_type parse(const string_t& s, InputMode mode = InputMode::String)
 		{
 			return parser.parse(s, mode);
