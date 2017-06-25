@@ -69,6 +69,8 @@ namespace jasoon
 
 		using size_type = size_t;
 
+		using difference_type = ptrdiff_t;
+
 		using object_t = Object_type<String_type,
 			Basic_json,
 			std::hash<String_type>,
@@ -98,6 +100,7 @@ namespace jasoon
 			interger_t,
 			float_t,
 			boolean_t>;
+
 	public:
 
 		bool is_object() const noexcept
@@ -136,16 +139,42 @@ namespace jasoon
 		}
 
 		template<typename T>
-		operator T() const //implicit cast operation
+		operator T() const noexcept //implicit cast operation
 		{
-			if constexpr(std::is_same_v<T, object_t>)
+			if constexpr(std::is_convertible_v<T, object_t>)
+			{
 				return *std::get<object_ptr>(value);
-			else if constexpr(std::is_same_v<T, array_t>)
+			}
+			else if constexpr(std::is_convertible_v<T, array_t>)
+			{
 				return *std::get<array_ptr>(value);
-			else if constexpr(std::is_same_v<T, string_t>)
+			}
+			else if constexpr(std::is_convertible_v<T, string_t>)
+			{
 				return *std::get<string_ptr>(value);
-			else
+			}
+			else if constexpr(std::is_same_v<T, interger_t>
+				|| std::is_same_v<T, float_t>
+				|| std::is_same_v<T, boolean_t>)
+			{
 				return std::get<T>(value);
+			}
+			else if constexpr(std::is_integral_v<T>)
+			{
+				return std::get<interger_t>(value);
+			}
+			else if constexpr(std::is_floating_point_v<T>)
+			{
+				return std::get<float_t>(value);
+			}
+			else if constexpr(std::is_convertible_v<T, boolean_t>)
+			{
+				return std::get<boolean_t>(value);
+			}
+			else
+			{
+				return nullptr;
+			}
 		}
 
 	public:
@@ -223,7 +252,7 @@ namespace jasoon
 				}
 				case'"':
 					return scanString();
-				case'-':
+				case'-':[[fallthrough]];
 				case'0':
 				case'1':
 				case'2':
@@ -253,15 +282,20 @@ namespace jasoon
 
 			void setStream(const string_t& s, InputMode mode)
 			{
+				last_char = ' '; //reset the token stream
 				if (mode == InputMode::String)
+				{
 					stream = std::make_unique<std::istringstream>(s);
+				}
 				else //mode == InputMode::File
+				{
 					stream = std::make_unique<std::ifstream>(s);
+				}
 			}
 
 		private:
 			std::unique_ptr<std::istream> stream;
-			int last_char = ' ';
+			int last_char;
 			std::variant<string_t, interger_t, float_t> value;
 
 			Token scanString()
@@ -355,8 +389,8 @@ namespace jasoon
 
 			Token scanNull()
 			{
-				using namespace std::string_view_literals; us
-					static constexpr auto null_literal = "null"sv;
+				using namespace std::string_view_literals;
+				static constexpr auto null_literal = "null"sv;
 				for (const auto& c : null_literal)
 				{
 					if (last_char == c)
@@ -492,14 +526,14 @@ namespace jasoon
 
 	public:
 		template<typename T>
-		reference operator[](T index)
+		reference operator[](T index) noexcept
 		{
 			if constexpr(std::is_integral_v<T>)
 			{
 				if (is_array())
 					return std::get<array_ptr>(value)->operator[](index);
 			}
-			else if constexpr(std::is_convertible_v<T, string_t>) //T can be char* , std::string ...
+			else if constexpr(std::is_constructible_v<string_t, T>) //T can be char* , std::string ...
 			{
 				if (is_object())
 					return std::get<object_ptr>(value)->operator[](index);
@@ -507,17 +541,47 @@ namespace jasoon
 		}
 
 		template<typename T>
-		const_reference operator[](T index) const
+		const_reference operator[](T index) const noexcept
 		{
 			if constexpr(std::is_integral_v<T>)
 			{
 				if (is_array())
 					return std::get<array_ptr>(value)->operator[](index);
 			}
-			else if constexpr(std::is_convertible_v<T, string_t>)
+			else if constexpr(std::is_constructible_v<string_t, T>)
 			{
 				if (is_object())
 					return std::get<object_ptr>(value)->operator[](index);
+			}
+		}
+
+		template<typename T>
+		reference at(T index) 
+		{
+			if constexpr(std::is_integral_v<T>)
+			{
+				if (is_array())
+					return std::get<array_ptr>(value)->at(index);
+			}
+			else if constexpr(std::is_constructible_v<string_t, T>) //T can be char* , std::string ...
+			{
+				if (is_object())
+					return std::get<object_ptr>(value)->at(index);
+			}
+		}
+
+		template<typename T>
+		const_reference at(T index) const 
+		{
+			if constexpr(std::is_integral_v<T>)
+			{
+				if (is_array())
+					return std::get<array_ptr>(value)->at(index);
+			}
+			else if constexpr(std::is_constructible_v<string_t, T>) 
+			{
+				if (is_object())
+					return std::get<object_ptr>(value)->at(index);
 			}
 		}
 
@@ -528,17 +592,40 @@ namespace jasoon
 		Json_value value;
 
 	public:
-		Basic_json() :type(Json_type::Null) {}
+		constexpr Basic_json() noexcept : type(Json_type::Null) {}
 
-		Basic_json(interger_t i) :type(Json_type::Interger), value(i) {}
+		template<typename U>
+		constexpr Basic_json(U val)
+			noexcept(std::is_nothrow_constructible_v<interger_t, U>
+				&& std::is_nothrow_constructible_v<float_t, U>)
+		{
+			if constexpr(std::is_integral_v<U>)
+			{
+				type = Json_type::Interger;
+				value = interger_t(val);
+			}
+			else if constexpr(std::is_floating_point_v<U>)
+			{
+				type = Json_type::Float;
+				value = float_t(val);
+			}
+		}
 
-		Basic_json(float_t f) :type(Json_type::Float), value(f) {}
+		constexpr Basic_json(interger_t i)
+			noexcept(std::is_nothrow_constructible_v<interger_t, interger_t>)
+			: type(Json_type::Interger), value(i) {}
 
-		Basic_json(boolean_t b) :type(Json_type::Boolean), value(b) {}
+		constexpr Basic_json(float_t f)
+			noexcept(std::is_nothrow_constructible_v<float_t, float_t>)
+			: type(Json_type::Float), value(f) {}
 
-		Basic_json(std::nullptr_t n) :type(Json_type::Null) {}
+		constexpr Basic_json(boolean_t b)
+			noexcept(std::is_nothrow_constructible_v<boolean_t, boolean_t>)
+			: type(Json_type::Boolean), value(b) {}
 
-		Basic_json(const std::initializer_list<Basic_json>& list)
+		constexpr Basic_json(std::nullptr_t n) noexcept : type(Json_type::Null) {}
+
+		Basic_json(std::initializer_list<Basic_json> list)
 		{
 			const auto is_object = std::all_of(list.begin(), list.end(), [](const auto& element)
 			{
@@ -565,6 +652,10 @@ namespace jasoon
 		Basic_json(const array_t& a) :type(Json_type::Array), value(std::make_unique<array_t>(a)) {}
 
 		Basic_json(const string_t& s) :type(Json_type::String), value(std::make_unique<string_t>(s)) {}
+
+		Basic_json(const char* s) :type(Json_type::String), value(std::make_unique<string_t>(s)) {}
+
+		Basic_json(const std::string_view sv) :type(Json_type::String), value(std::make_unique<string_t>(s)) {}
 
 		Basic_json(Json_type t) :type(t)
 		{
@@ -594,10 +685,12 @@ namespace jasoon
 				break;
 			}
 		}
+
 		Basic_json(const Basic_json& other)
 		{
 			*this = other;
 		}
+
 		reference operator=(const Basic_json& other)
 		{
 			if (this != &other)
@@ -631,10 +724,12 @@ namespace jasoon
 			}
 			return *this;
 		}
+
 		Basic_json(Basic_json&& other) noexcept
 		{
 			*this = std::move(other);
 		}
+
 		reference operator=(Basic_json&& other) noexcept
 		{
 			if (this != &other)
@@ -672,19 +767,25 @@ namespace jasoon
 		~Basic_json() = default;
 
 	public:
-		string_t stringify()
+		string_t stringify() const
 		{
 			string_t s;
 			if (type == Json_type::Object)
-				stringifyObject(s);
+				stringifyObject(s, 1);
 			else if (type == Json_type::Array)
-				stringifyArray(s);
+				stringifyArray(s, 1);
 			return s;
 		}
 	private:
-		void stringifyObject(string_t& s)
+		void addSpace(string_t& s, int num) const
 		{
-			s += "{\t";
+			for (int i = 0; i < num; ++i)
+				s += "  ";
+		}
+		void stringifyObject(string_t& s, int depth) const
+		{
+			s += "{\n";
+			addSpace(s, depth);
 			for (const auto& element : *std::get<object_ptr>(value))
 			{
 				s += '"';
@@ -693,10 +794,10 @@ namespace jasoon
 				switch (element.second.type)
 				{
 				case Json_type::Object:
-					element.second.stringifyObject(s);
+					element.second.stringifyObject(s, depth + 1);
 					break;
 				case Json_type::Array:
-					element.second.stringifyArray(s);
+					element.second.stringifyArray(s, depth + 1);
 					break;
 				case Json_type::String:
 					s += *std::get<string_ptr>(element.second.value);
@@ -723,22 +824,24 @@ namespace jasoon
 				default:
 					break;
 				}
-				s += ",\n\t";
+				s += ",\n";
+				addSpace(s, depth);
 			}
 			s += '}';
 		}
-		void stringifyArray(string_t& s)
+		void stringifyArray(string_t& s, int depth) const
 		{
-			s += "[\t";
+			s += "[\n";
+			addSpace(s, depth);
 			for (const auto& element : *std::get<array_ptr>(value))
 			{
 				switch (element.type)
 				{
 				case Json_type::Object:
-					element.stringifyObject(s);
+					element.stringifyObject(s, depth + 1);
 					break;
 				case Json_type::Array:
-					element.stringifyArray(s);
+					element.stringifyArray(s, depth + 1);
 					break;
 				case Json_type::String:
 					s += *std::get<string_ptr>(element.value);
@@ -763,7 +866,8 @@ namespace jasoon
 				default:
 					break;
 				}
-				s += ",\n\t";
+				s += ",\n";
+				addSpace(s, depth);
 			}
 			s += ']';
 		}
@@ -778,5 +882,10 @@ namespace jasoon
 	using Json = Basic_json<>;
 
 	Json::Parser Json::parser;
+
+	Json operator""_json(const char* str, size_t len)
+	{
+		return Json::parse(str);
+	}
 
 }
