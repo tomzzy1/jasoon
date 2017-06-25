@@ -16,7 +16,6 @@ void test()
 	}
 	std::cout << static_cast<int>(s[0]);
 	auto start = system_clock::now();
-	for (int i = 0; i < 10000; ++i)
 	auto j = Json::parse(s);
 	auto end = system_clock::now();
 	std::cout << duration_cast<milliseconds>(end - start).count();
