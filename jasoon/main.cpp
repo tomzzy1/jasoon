@@ -19,14 +19,15 @@ void test()
 	auto j = Json::parse(s);
 	auto end = system_clock::now();
 	std::cout << duration_cast<milliseconds>(end - start).count();
-	std::cout << j.stringify();
+	//std::cout << j.stringify();
 }
 
 int main()
 {
-	//test();
-	auto j = Json::parse("{ \"happy\": true, \"pi\": 3.141 }"); 
+	test();
+	auto j = Json::parse("{ \"happy\": true, \"pi\": 3.141}"); 
 	std::cout << std::boolalpha << j["pi"].is_float() << '\n';
+	j["happy"] = false;
 	bool b = j["happy"];
 	std::cout << b << '\n';
 	auto j2 = Json::parse("data.json", InputMode::File);

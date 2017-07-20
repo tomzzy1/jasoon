@@ -12,9 +12,23 @@
 #include <fstream>
 #include <string_view>
 #include <type_traits>
+#include <utility>
+#include <stdexcept>
 
 namespace jasoon
 {
+
+	class type_error :public std::logic_error
+	{
+	public:
+		using std::logic_error::logic_error;
+	};
+
+	class input_error :public std::runtime_error
+	{
+	public:
+		using std::runtime_error::runtime_error;
+	};
 
 	enum class Token
 	{
@@ -77,21 +91,22 @@ namespace jasoon
 			std::equal_to<String_type>,
 			Allocator_type<std::pair<const String_type, Basic_json>>>;
 
-		using object_ptr = std::unique_ptr<object_t>; //used in varaint
-
 		using array_t = Array_type<Basic_json, Allocator_type<Basic_json>>;
 
-		using array_ptr = std::unique_ptr<array_t>; //used in varaint
-
 		using string_t = String_type;
-
-		using string_ptr = std::unique_ptr<string_t>; //used in varaint
 
 		using interger_t = Interger_type;
 
 		using float_t = Float_type;
 
 		using boolean_t = Boolean_type;
+
+	private:
+		using object_ptr = std::unique_ptr<object_t>; //used in varaint
+
+		using array_ptr = std::unique_ptr<array_t>; //used in varaint
+
+		using string_ptr = std::unique_ptr<string_t>; //used in varaint
 
 		using Json_value = std::variant<
 			object_ptr,
@@ -136,6 +151,11 @@ namespace jasoon
 		bool is_null() const noexcept
 		{
 			return type == Json_type::Null;
+		}
+
+		Json_type get_type() const noexcept
+		{
+			return type;
 		}
 
 		template<typename T>
@@ -187,8 +207,10 @@ namespace jasoon
 				std::get<object_ptr>(value)
 				->emplace(
 					*std::get<string_ptr>(element[0].value), element[1]);
-			else
+			else if (is_array())
 				std::get<array_ptr>(value)->push_back(element);
+			else
+				throw type_error("only object or array provide push_back");
 		}
 		void push_back(value_type&& element)
 		{
@@ -199,8 +221,10 @@ namespace jasoon
 				std::get<object_ptr>(value)
 				->emplace(
 					std::move(*std::get<string_ptr>(element[0].value)), std::move(element[1]));
+			else if (is_array())
+				std::get<array_ptr>(value)->push_back(element);
 			else
-				std::get<array_ptr>(value)->push_back(std::move(element));
+				throw type_error("only object or array provide push_back");
 		}
 		size_type size() const
 		{
@@ -208,6 +232,8 @@ namespace jasoon
 				return std::get<object_ptr>(value)->size();
 			if (is_array())
 				return std::get<array_ptr>(value)->size();
+			else
+				throw type_error("only object or array has size");
 		}
 	private:
 		class Lexer
@@ -216,38 +242,37 @@ namespace jasoon
 
 			Token getToken()
 			{
-				while (std::isspace(last_char)) //skip space
-					last_char = stream->get();
+				skipSpace();
 				switch (last_char)
 				{
 				case'{':
 				{
-					last_char = stream->get();
+					getChar();
 					return Token::Object_begin;
 				}
 				case'}':
 				{
-					last_char = stream->get();
+					getChar();
 					return Token::Object_end;
 				}
 				case'[':
 				{
-					last_char = stream->get();
+					getChar();
 					return Token::Array_begin;
 				}
 				case']':
 				{
-					last_char = stream->get();
+					getChar();
 					return Token::Array_end;
 				}
 				case':':
 				{
-					last_char = stream->get();
+					getChar();
 					return Token::Name_separator;
 				}
 				case',':
 				{
-					last_char = stream->get();
+					getChar();
 					return Token::Value_separator;
 				}
 				case'"':
@@ -270,12 +295,35 @@ namespace jasoon
 				case'n': //null
 					return scanNull();
 				default:
-					break;
+				{
+					std::cerr << "'line " << line_no << "': unexpected character";
+					throw input_error("invalid input");
+				}
+				}
+			}
+
+			void getChar() //read next char from stream
+			{
+				last_char = stream->get();
+				if (last_char == '\n') //update line number
+					++line_no;
+			}
+
+			int getLineNo() const noexcept
+			{
+				return line_no;
+			}
+
+			void skipSpace()
+			{
+				while (std::isspace(last_char))
+				{
+					getChar();
 				}
 			}
 
 			template<typename T>
-			decltype(auto) getValue() const
+			decltype(auto) getValue() const noexcept
 			{
 				return std::get<T>(value);
 			}
@@ -283,6 +331,7 @@ namespace jasoon
 			void setStream(const string_t& s, InputMode mode)
 			{
 				last_char = ' '; //reset the token stream
+				line_no = 1;
 				if (mode == InputMode::String)
 				{
 					stream = std::make_unique<std::istringstream>(s);
@@ -297,12 +346,13 @@ namespace jasoon
 			std::unique_ptr<std::istream> stream;
 			int last_char;
 			std::variant<string_t, interger_t, float_t> value;
+			int line_no;
 
 			Token scanString()
 			{
 				string_t s;
 				bool escape = false;
-				last_char = stream->get();
+				getChar();
 				while (escape || last_char != '"')
 				{
 					if (!escape && last_char == '\\')
@@ -314,9 +364,9 @@ namespace jasoon
 						escape = false;
 						s += last_char;
 					}
-					last_char = stream->get();
+					getChar();
 				}
-				last_char = stream->get();
+				getChar();
 				value = s;
 				return Token::String;
 			}
@@ -335,19 +385,16 @@ namespace jasoon
 					if (last_char == '.')
 						is_float = true;
 					num += last_char;
-					last_char = stream->get();
+					getChar();
 				}
 				if (is_float)
 				{
-					if constexpr(std::is_same_v<float_t, double>)
-						value = std::stod(num);
-					else if constexpr(std::is_same_v<float_t, float>)
-						value = std::stof(nums);
+					value = static_cast<float_t>(std::stod(num));
 					return Token::Float;
 				}
 				else
 				{
-					value = std::stoll(num);
+					value = static_cast<interger_t>(std::stoll(num));
 					return Token::Interger;
 				}
 			}
@@ -362,11 +409,11 @@ namespace jasoon
 					for (const auto& c : true_literal)
 					{
 						if (last_char == c)
-							last_char = stream->get();
+							getChar();
 						else
 						{
 							std::cerr << "invalid true literal";
-							throw;
+							throw input_error("invalid input");
 						}
 					}
 					return Token::True;
@@ -376,11 +423,11 @@ namespace jasoon
 					for (const auto& c : false_literal)
 					{
 						if (last_char == c)
-							last_char = stream->get();
+							getChar();
 						else
 						{
 							std::cerr << "invalid false literal";
-							throw;
+							throw input_error("invalid input");
 						}
 					}
 					return Token::False;
@@ -394,11 +441,11 @@ namespace jasoon
 				for (const auto& c : null_literal)
 				{
 					if (last_char == c)
-						last_char = stream->get();
+						getChar();
 					else
 					{
 						std::cerr << "invalid null literal";
-						throw;
+						throw input_error("invalid input");
 					}
 				}
 				return Token::Null;
@@ -418,8 +465,8 @@ namespace jasoon
 					return parseObject();
 				else
 				{
-					std::cerr << "invalid input";
-					throw;
+					std::cerr << "must be started with array or object";
+					throw input_error("invalid input");
 				}
 			}
 		private:
@@ -448,16 +495,16 @@ namespace jasoon
 					case Token::String:
 					{
 						if (is_name)
-							name = lexer.getValue<string_t>();
+							name = lexer.template getValue<string_t>();
 						else
-							object.push_back({ name,lexer.getValue<string_t>() });
+							object.push_back({ name,lexer.template getValue<string_t>() });
 						break;
 					}
 					case Token::Interger:
-						object.push_back({ name,lexer.getValue<interger_t>() });
+						object.push_back({ name,lexer.template getValue<interger_t>() });
 						break;
 					case Token::Float:
-						object.push_back({ name,lexer.getValue<float_t>() });
+						object.push_back({ name,lexer.template getValue<float_t>() });
 						break;
 					case Token::True:
 						object.push_back({ name,true });
@@ -470,7 +517,10 @@ namespace jasoon
 						break;
 					case Token::Array_end:
 					default:
-						break;
+					{
+						std::cerr << "'line " << lexer.getLineNo() << "': '}' is expected";
+						throw input_error("invalid input");
+					}
 					}
 					token = lexer.getToken();
 				}
@@ -493,13 +543,13 @@ namespace jasoon
 					case Token::Value_separator:
 						break;
 					case Token::String:
-						array.push_back(lexer.getValue<string_t>());
+						array.push_back(lexer.template getValue<string_t>());
 						break;
 					case Token::Interger:
-						array.push_back(lexer.getValue<interger_t>());
+						array.push_back(lexer.template getValue<interger_t>());
 						break;
 					case Token::Float:
-						array.push_back(lexer.getValue<float_t>());
+						array.push_back(lexer.template getValue<float_t>());
 						break;
 					case Token::True:
 						array.push_back(true);
@@ -510,10 +560,17 @@ namespace jasoon
 					case Token::Null:
 						array.push_back(nullptr);
 						break;
-					case Token::Object_end:
 					case Token::Name_separator:
+					{
+						std::cerr << "'line " << lexer.getLineNo() << "': unexpected ':'";
+						throw input_error("invalid input");
+					}
+					case Token::Object_end:
 					default:
-						break;
+					{
+						std::cerr << "'line " << lexer.getLineNo() << "': ']' is expected";
+						throw input_error("invalid input");
+					}
 					}
 					token = lexer.getToken();
 				}
@@ -530,13 +587,15 @@ namespace jasoon
 		{
 			if constexpr(std::is_integral_v<T>)
 			{
-				if (is_array())
-					return std::get<array_ptr>(value)->operator[](index);
+				return std::get<array_ptr>(value)->operator[](index);
 			}
 			else if constexpr(std::is_constructible_v<string_t, T>) //T can be char* , std::string ...
 			{
-				if (is_object())
-					return std::get<object_ptr>(value)->operator[](index);
+				return std::get<object_ptr>(value)->operator[](index);
+			}
+			else
+			{
+				static_assert(false, "not a valid index type");
 			}
 		}
 
@@ -545,43 +604,61 @@ namespace jasoon
 		{
 			if constexpr(std::is_integral_v<T>)
 			{
-				if (is_array())
-					return std::get<array_ptr>(value)->operator[](index);
+				return std::get<array_ptr>(value)->operator[](index);
 			}
 			else if constexpr(std::is_constructible_v<string_t, T>)
 			{
-				if (is_object())
-					return std::get<object_ptr>(value)->operator[](index);
+				return std::get<object_ptr>(value)->operator[](index);
+			}
+			else
+			{
+				static_assert(false, "not a valid index type");
 			}
 		}
 
 		template<typename T>
-		reference at(T index) 
+		reference at(T index) //provide check with type and index
 		{
 			if constexpr(std::is_integral_v<T>)
 			{
 				if (is_array())
 					return std::get<array_ptr>(value)->at(index);
+				else
+					throw type_error("only array is valid");
 			}
 			else if constexpr(std::is_constructible_v<string_t, T>) //T can be char* , std::string ...
 			{
 				if (is_object())
 					return std::get<object_ptr>(value)->at(index);
+				else
+					throw type_error("only object is valid");
+			}
+			else
+			{
+				static_assert(false, "not a valid index type");
 			}
 		}
 
 		template<typename T>
-		const_reference at(T index) const 
+		const_reference at(T index) const
 		{
 			if constexpr(std::is_integral_v<T>)
 			{
 				if (is_array())
 					return std::get<array_ptr>(value)->at(index);
+				else
+					throw type_error("only array is valid");
 			}
-			else if constexpr(std::is_constructible_v<string_t, T>) 
+			else if constexpr(std::is_constructible_v<string_t, T>)
 			{
 				if (is_object())
 					return std::get<object_ptr>(value)->at(index);
+				else
+					throw type_error("only object is valid");
+			}
+			else
+			{
+				static_assert(false, "not a valid index type");
 			}
 		}
 
@@ -655,7 +732,7 @@ namespace jasoon
 
 		Basic_json(const char* s) :type(Json_type::String), value(std::make_unique<string_t>(s)) {}
 
-		Basic_json(const std::string_view sv) :type(Json_type::String), value(std::make_unique<string_t>(s)) {}
+		Basic_json(std::string_view sv) :type(Json_type::String), value(std::make_unique<string_t>(sv)) {}
 
 		Basic_json(Json_type t) :type(t)
 		{
@@ -726,8 +803,9 @@ namespace jasoon
 		}
 
 		Basic_json(Basic_json&& other) noexcept
+			:type(other.type), value(std::move(other.value))
 		{
-			*this = std::move(other);
+
 		}
 
 		reference operator=(Basic_json&& other) noexcept
@@ -735,36 +813,22 @@ namespace jasoon
 			if (this != &other)
 			{
 				type = other.type;
-				switch (type)
-				{
-				case Json_type::Object:
-					value = std::move(std::get<object_ptr>(other.value));
-					break;
-				case Json_type::Array:
-					value = std::move(std::get<array_ptr>(other.value));
-					break;
-				case Json_type::String:
-					value = std::move(std::get<string_ptr>(other.value));
-					break;
-				case Json_type::Interger:
-					value = std::get<interger_t>(other.value);
-					break;
-				case Json_type::Float:
-					value = std::get<float_t>(other.value);
-					break;
-				case Json_type::Boolean:
-					value = std::get<boolean_t>(other.value);
-					break;
-				case Json_type::Null:
-					break;
-				default:
-					break;
-				}
+				value = std::move(other.value);
 			}
 			return *this;
 		}
 
 		~Basic_json() = default;
+
+		bool operator==(const Basic_json& other) const noexcept
+		{
+			return type == other.type && value == other.value;
+		}
+
+		bool operator!=(const Basic_json& other) const noexcept
+		{
+			return !(*this == other);
+		}
 
 	public:
 		string_t stringify() const
@@ -881,7 +945,8 @@ namespace jasoon
 
 	using Json = Basic_json<>;
 
-	Json::Parser Json::parser;
+	template<>
+	Json::Parser Json::parser{};
 
 	Json operator""_json(const char* str, size_t len)
 	{
