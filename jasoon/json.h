@@ -347,10 +347,11 @@ namespace jasoon
 			int last_char;
 			std::variant<string_t, interger_t, float_t> value;
 			int line_no;
+			constexpr int max_static_buffer_size = 16; //for SSO
+			std::string buffer{max_static_buffer_size};
 
 			Token scanString()
 			{
-				string_t s;
 				bool escape = false;
 				getChar();
 				while (escape || last_char != '"')
@@ -362,18 +363,18 @@ namespace jasoon
 					else
 					{
 						escape = false;
-						s += last_char;
+						buffer += last_char;
 					}
 					getChar();
 				}
 				getChar();
 				value = s;
+				buffer.resize(0);
 				return Token::String;
 			}
 
 			Token scanNumber()
 			{
-				string_t num;
 				bool is_float = false;
 				while (std::isdigit(last_char)
 					|| last_char == '.'
@@ -384,17 +385,17 @@ namespace jasoon
 				{
 					if (last_char == '.')
 						is_float = true;
-					num += last_char;
+					buffer += last_char;
 					getChar();
 				}
 				if (is_float)
 				{
-					value = static_cast<float_t>(std::stod(num));
+					value = static_cast<float_t>(std::stod(buffer));
 					return Token::Float;
 				}
 				else
 				{
-					value = static_cast<interger_t>(std::stoll(num));
+					value = static_cast<interger_t>(std::stoll(buffer));
 					return Token::Interger;
 				}
 			}
