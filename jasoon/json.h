@@ -388,6 +388,7 @@ namespace jasoon
 					buffer += last_char;
 					getChar();
 				}
+				buffer.resize(0);
 				if (is_float)
 				{
 					value = static_cast<float_t>(std::stod(buffer));
