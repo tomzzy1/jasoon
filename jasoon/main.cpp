@@ -14,7 +14,7 @@ void test()
 		f >> c;
 		s += c;
 	}
-	std::cout << static_cast<int>(s[0]);
+	//std::cout << static_cast<int>(s[0]);
 	auto start = system_clock::now();
 	auto j = Json::parse(s);
 	auto end = system_clock::now();

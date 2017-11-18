@@ -14,6 +14,7 @@
 #include <type_traits>
 #include <utility>
 #include <stdexcept>
+#include <functional>
 
 namespace jasoon
 {
@@ -344,7 +345,7 @@ namespace jasoon
 
 		private:
 			std::unique_ptr<std::istream> stream;
-			int last_char;
+			int last_char = ' ';
 			std::variant<string_t, interger_t, float_t> value;
 			int line_no;
 
@@ -748,10 +749,10 @@ namespace jasoon
 				value = std::make_unique<string_t>();
 				break;
 			case Json_type::Interger:
-				value = interger_t(0);
+				value = 0ll;
 				break;
 			case Json_type::Float:
-				value = float_t(0.0);
+				value = 0.0f;
 				break;
 			case Json_type::Boolean:
 				value = false;
