@@ -110,7 +110,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
       <ErrorReporting>Send</ErrorReporting>
       <DisableLanguageExtensions>true</DisableLanguageExtensions>
       <AssemblerOutput>AssemblyAndSourceCode</AssemblerOutput>

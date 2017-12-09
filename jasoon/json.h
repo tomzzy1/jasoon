@@ -15,6 +15,7 @@
 #include <utility>
 #include <stdexcept>
 #include <functional>
+#include <array>
 
 namespace jasoon
 {
@@ -78,7 +79,7 @@ namespace jasoon
 	public:
 		using value_type = Basic_json;
 
-		using reference = value_type&;
+		using reference = value_type & ;
 
 		using const_reference = const reference;
 
@@ -237,6 +238,7 @@ namespace jasoon
 				throw type_error("only object or array has size");
 		}
 	private:
+
 		class Lexer
 		{
 		public:
@@ -348,11 +350,11 @@ namespace jasoon
 			int last_char = ' ';
 			std::variant<string_t, interger_t, float_t> value;
 			int line_no;
-			constexpr int max_static_buffer_size = 16; //for SSO
-			std::string buffer{max_static_buffer_size};
+			std::string buffer;
 
 			Token scanString()
 			{
+				string_t s;
 				bool escape = false;
 				getChar();
 				while (escape || last_char != '"')
@@ -364,18 +366,19 @@ namespace jasoon
 					else
 					{
 						escape = false;
-						buffer += last_char;
+						s += last_char;
 					}
 					getChar();
 				}
 				getChar();
-				value = s;
-				buffer.resize(0);
+				//std::cout << buffer.to_string();
+				value = std::move(s);
 				return Token::String;
 			}
 
 			Token scanNumber()
 			{
+				buffer.clear();
 				bool is_float = false;
 				while (std::isdigit(last_char)
 					|| last_char == '.'
@@ -389,7 +392,6 @@ namespace jasoon
 					buffer += last_char;
 					getChar();
 				}
-				buffer.resize(0);
 				if (is_float)
 				{
 					value = static_cast<float_t>(std::stod(buffer));
@@ -497,6 +499,7 @@ namespace jasoon
 						break;
 					case Token::String:
 					{
+						//std::cout << lexer.template getValue<string_t>() << ' ';
 						if (is_name)
 							name = lexer.template getValue<string_t>();
 						else
@@ -596,10 +599,6 @@ namespace jasoon
 			{
 				return std::get<object_ptr>(value)->operator[](index);
 			}
-			else
-			{
-				static_assert(false, "not a valid index type");
-			}
 		}
 
 		template<typename T>
@@ -612,10 +611,6 @@ namespace jasoon
 			else if constexpr(std::is_constructible_v<string_t, T>)
 			{
 				return std::get<object_ptr>(value)->operator[](index);
-			}
-			else
-			{
-				static_assert(false, "not a valid index type");
 			}
 		}
 
@@ -636,10 +631,6 @@ namespace jasoon
 				else
 					throw type_error("only object is valid");
 			}
-			else
-			{
-				static_assert(false, "not a valid index type");
-			}
 		}
 
 		template<typename T>
@@ -658,10 +649,6 @@ namespace jasoon
 					return std::get<object_ptr>(value)->at(index);
 				else
 					throw type_error("only object is valid");
-			}
-			else
-			{
-				static_assert(false, "not a valid index type");
 			}
 		}
 
@@ -751,10 +738,10 @@ namespace jasoon
 				value = std::make_unique<string_t>();
 				break;
 			case Json_type::Interger:
-				value = 0ll;
+				value = static_cast<interger_t>(0);
 				break;
 			case Json_type::Float:
-				value = 0.0f;
+				value = static_cast<float_t>(0);
 				break;
 			case Json_type::Boolean:
 				value = false;
@@ -857,7 +844,7 @@ namespace jasoon
 			{
 				s += '"';
 				s += element.first;
-				s += "\":";
+				s += "\": ";
 				switch (element.second.type)
 				{
 				case Json_type::Object:
@@ -867,8 +854,12 @@ namespace jasoon
 					element.second.stringifyArray(s, depth + 1);
 					break;
 				case Json_type::String:
+				{
+					s += "\"";
 					s += *std::get<string_ptr>(element.second.value);
+					s += "\"";
 					break;
+				}
 				case Json_type::Interger:
 					s += std::to_string(
 						std::get<interger_t>(element.second.value));
@@ -911,8 +902,12 @@ namespace jasoon
 					element.stringifyArray(s, depth + 1);
 					break;
 				case Json_type::String:
+				{
+					s += "\"";
 					s += *std::get<string_ptr>(element.value);
+					s += "\"";
 					break;
+				}
 				case Json_type::Interger:
 					s += std::to_string(std::get<interger_t>(element.value));
 					break;
@@ -955,5 +950,6 @@ namespace jasoon
 	{
 		return Json::parse(str);
 	}
+
 
 }
